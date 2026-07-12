@@ -1,0 +1,29 @@
+.DS_Store
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Builds
+.next/
+out/
+dist/
+build/
+coverage/
+
+# Local tooling
+.turbo/
+.vercel/
+.netlify/
+
+# Logs
+*.log
