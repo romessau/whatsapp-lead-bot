@@ -43,10 +43,11 @@ listing search, and handoff decisions are all plain code.
    budget provided +15, budget realistic +20, location +15,
    urgent/this-month timeline +20, buy/invest purpose +10,
    name+phone +10, wants-call true +10, capped at 100.
-8. **Handoff** - completed Warm/Hot leads are sent to n8n or Resend if
-   configured. n8n must explicitly return `notified: true`; otherwise the
-   backend falls through to Resend or console instead of silently losing a
-   lead. If no channel is configured, the summary is logged for demo visibility.
+8. **Handoff** - completed Warm/Hot leads are sent to every configured direct
+   notification channel: the agent's WhatsApp number and email. n8n remains an
+   optional automation path and must explicitly return `notified: true`; it
+   cannot suppress direct notifications merely by accepting the webhook. If no
+   channel succeeds, the summary is logged for demo visibility.
 9. **Structured listing search** - `/api/search` accepts either natural
    language or structured fields, normalizes market phrasing, and searches
    active Supabase listings. If no DB listings exist, it falls back to demo
@@ -119,10 +120,12 @@ curl -X POST http://localhost:4000/api/search \
 | `BOOKING_URL` | no | Booking link shown in close/handoff copy |
 | `MAX_CONFIRMATION_HOLDS` | no | Defaults to 2 |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | only for sandbox | Twilio WhatsApp Sandbox credentials |
+| `AGENT_WHATSAPP_TO` | no | Agent notification recipient in `whatsapp:+E.164` format |
+| `TWILIO_AGENT_CONTENT_SID` | production notifications | Approved template used outside WhatsApp's free-form service window |
 | `TWILIO_VALIDATE_SIGNATURE` / `PUBLIC_WEBHOOK_URL` | production WhatsApp | Verify requests against the exact public webhook URL |
 | `N8N_WEBHOOK_URL` | no | If set, completed Warm/Hot handoffs POST here |
 | `N8N_WEBHOOK_SECRET` | recommended with n8n | Shared secret sent in `X-Webhook-Secret` |
-| `RESEND_API_KEY` / `AGENT_EMAIL` / `FROM_EMAIL` | no | Email fallback when no n8n URL is set |
+| `RESEND_API_KEY` / `AGENT_EMAIL` / `FROM_EMAIL` | no | Direct email notification channel |
 
 ## 3. Frontend Setup
 

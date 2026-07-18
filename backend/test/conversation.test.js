@@ -84,12 +84,20 @@ test("an n8n acknowledgement without delivery confirmation falls through to emai
     N8N_WEBHOOK_URL: process.env.N8N_WEBHOOK_URL,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
     AGENT_EMAIL: process.env.AGENT_EMAIL,
+    TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+    TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM,
+    AGENT_WHATSAPP_TO: process.env.AGENT_WHATSAPP_TO,
   };
   const calls = [];
 
   process.env.N8N_WEBHOOK_URL = "https://n8n.test/webhook";
   process.env.RESEND_API_KEY = "test-key";
   process.env.AGENT_EMAIL = "agent@example.com";
+  delete process.env.TWILIO_ACCOUNT_SID;
+  delete process.env.TWILIO_AUTH_TOKEN;
+  delete process.env.TWILIO_WHATSAPP_FROM;
+  delete process.env.AGENT_WHATSAPP_TO;
   console.error = () => {};
   globalThis.fetch = async (url) => {
     calls.push(String(url));
@@ -104,7 +112,7 @@ test("an n8n acknowledgement without delivery confirmation falls through to emai
 
   try {
     await notifyAgent("summary", { classification: "Warm", location: "Lahore" });
-    assert.deepEqual(calls, ["https://n8n.test/webhook", "https://api.resend.com/emails"]);
+    assert.deepEqual(calls.sort(), ["https://api.resend.com/emails", "https://n8n.test/webhook"]);
   } finally {
     globalThis.fetch = originalFetch;
     console.error = originalError;
