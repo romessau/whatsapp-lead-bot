@@ -7,6 +7,8 @@ import {
   findNextQuestion,
   getAcceptedFields,
   getCopy,
+  getQuestionByKey,
+  getPrompt,
   getQuestionPrompt,
 } from "../config/questions.js";
 import { MAX_CONFIRMATION_HOLDS } from "../config/app.js";
@@ -20,6 +22,16 @@ const SKIP_RE = /\b(skip|not sure|idk|i don't know|dont know|no idea|pata nahi|m
 const CONFIRM_RE = /\b(yes|yep|yeah|sure|ok|okay|confirm|save|send|done|han|haan|theek|kar dein)\b/i;
 const HOLD_RE = /\b(no|not yet|later|hold|wait|maybe later|abhi nahi|ruk|nahi)\b/i;
 const EARLY_EXIT_RE = /\b(bye|goodbye|not interested|stop|cancel|no thanks|unsubscribe|bas|band)\b/i;
+const ROUTABLE_MODEL_QUESTIONS = new Set([
+  "location",
+  "budget_pkr",
+  "property_type",
+  "bedrooms",
+  "timeline",
+  "name",
+  "phone",
+  "wants_call",
+]);
 
 function hasValue(value) {
   if (typeof value === "string") return value.trim().length > 0;
@@ -139,6 +151,42 @@ function nextPrompt(state) {
   };
 }
 
+function questionFromKey(key, language, promptOverride = null) {
+  if (!key) return null;
+  const prompt = promptOverride || getPrompt(key, language);
+  if (!prompt) return null;
+  const configuredQuestion = getQuestionByKey(key);
+  return {
+    key,
+    acceptedFields: configuredQuestion ? getAcceptedFields(configuredQuestion) : [key],
+    prompt,
+  };
+}
+
+function isAnsweredOrSkipped(state, key) {
+  if (state.skipped[key] === true) return true;
+  return hasValue(state.fields[key]);
+}
+
+function modelNextPrompt(state, extraction) {
+  if (!ROUTABLE_MODEL_QUESTIONS.has(extraction.next_question)) return null;
+  if (isAnsweredOrSkipped(state, extraction.next_question)) return null;
+  return questionFromKey(extraction.next_question, state.language, extraction.next_question_prompt);
+}
+
+function fallbackNextPrompt(state) {
+  return nextPrompt(state);
+}
+
+function currentStepPrompt(state, currentStep) {
+  if (!currentStep || currentStep === "confirm_close" || currentStep === "language") return fallbackNextPrompt(state);
+  return questionFromKey(currentStep, state.language) ?? fallbackNextPrompt(state);
+}
+
+function resolveNextPrompt(state, extraction) {
+  return modelNextPrompt(state, extraction) ?? fallbackNextPrompt(state);
+}
+
 function buildExtractionContext(state, currentQuestion) {
   return {
     language: state.language,
@@ -219,10 +267,10 @@ function buildReply({ language, ack = "", summary = "", hint = "", prompt = "" }
   return [ack, summary, hint, prompt].filter(Boolean).join("\n\n");
 }
 
-async function persistProgress(phone, state) {
-  const question = nextPrompt(state);
-  await saveSession(phone, serializeState(state), question?.key ?? null);
-  return question;
+async function persistProgress(phone, state, question = null) {
+  const resolvedQuestion = question ?? fallbackNextPrompt(state);
+  await saveSession(phone, serializeState(state), resolvedQuestion?.key ?? null);
+  return resolvedQuestion;
 }
 
 async function finalizeLead(phone, state, status, sessionId) {
@@ -274,7 +322,8 @@ async function askForConfirmation(phone, state) {
 /**
  * Core, channel-agnostic conversation step. Both the web chat adapter and
  * the Twilio WhatsApp adapter call this with the same inputs and get the
- * same outputs. The LLM extracts fields and intent only; code owns routing.
+ * same outputs. The LLM extracts fields/intent and may suggest the next
+ * question; code validates that suggestion and owns scoring/handoff.
  *
  * @param {string} phone - stable id for the session (phone number or web session id)
  * @param {string} userMessage - raw inbound text
@@ -310,7 +359,7 @@ export async function handleIncomingMessage(phone, userMessage) {
     }
   }
 
-  const currentQuestion = nextPrompt(state);
+  const currentQuestion = currentStepPrompt(state, session.current_step);
   const extraction = await extractFields(userMessage, buildExtractionContext(state, currentQuestion));
   const usefulFieldFound = hasAnyUsefulField(extraction.fields);
 
@@ -380,7 +429,7 @@ export async function handleIncomingMessage(phone, userMessage) {
     state.skipped[currentQuestion.key] = true;
   }
 
-  if (allFieldsResolved(state.fields, state.skipped)) {
+  if (extraction.next_question === "confirm_close" || allFieldsResolved(state.fields, state.skipped)) {
     const hint = await searchHint(state);
     const result = await askForConfirmation(phone, state);
     return {
@@ -396,7 +445,7 @@ export async function handleIncomingMessage(phone, userMessage) {
   }
 
   const hint = changedFieldCount(previousFields, state.fields) > 0 ? await searchHint(state) : "";
-  const question = await persistProgress(phone, state);
+  const question = await persistProgress(phone, state, resolveNextPrompt(state, extraction));
 
   if (!usefulFieldFound && !skipCurrent) {
     const prefix = extraction.intent === "off_topic" ? getCopy(state.language).redirect : getCopy(state.language).reassure;

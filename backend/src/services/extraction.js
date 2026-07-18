@@ -9,6 +9,17 @@ const INTENTS = ["on_topic", "uncertain", "off_topic", "exit"];
 const PURPOSES = ["buy", "rent", "invest"];
 const PROPERTY_TYPES = ["plot", "house", "apartment", "commercial"];
 const TIMELINES = ["urgent", "this_month", "3_months", "exploring"];
+const NEXT_QUESTIONS = [
+  "location",
+  "budget_pkr",
+  "property_type",
+  "bedrooms",
+  "timeline",
+  "name",
+  "phone",
+  "wants_call",
+  "confirm_close",
+];
 
 export const EXTRACTION_SYSTEM_PROMPT = `You extract structured real estate lead information and classify the user's intent. Messages may be in English, Urdu, or Roman Urdu.
 
@@ -26,7 +37,9 @@ Return ONLY valid JSON, no other text, matching this schema:
     "name": string | null,
     "phone": string | null,
     "wants_call": boolean | null
-  }
+  },
+  "next_question": "location" | "budget_pkr" | "property_type" | "bedrooms" | "timeline" | "name" | "phone" | "wants_call" | "confirm_close" | null,
+  "next_question_prompt": string | null
 }
 
 Intent rules:
@@ -55,6 +68,12 @@ Field rules:
 - "yes" or "call me" can mean wants_call true. "no call" can mean wants_call false.
 - If the user is annoyed, swears, jokes, or adds random text but still gives a usable property detail, extract the useful detail and use intent "on_topic".
 - If the user swears and clearly wants to stop, use intent "exit".
+- Choose next_question like a helpful property assistant, not a rigid form:
+  - Ask for the single most useful missing detail after considering collected_fields and this message.
+  - Do not ask for a field that is already answered in collected_fields or fields.
+  - If enough qualification details are available and only handoff confirmation remains, use "confirm_close".
+  - Use null only when the conversation should end, the user is exiting, or you are genuinely unsure.
+  - next_question_prompt should be a short, natural question in the user's language when you can phrase it better for context; otherwise null.
 - Do not include any explanation, markdown, or text outside the JSON object.`;
 
 const SCHEMA_KEYS = [
@@ -107,6 +126,10 @@ function sanitizeFields(parsedFields = {}) {
   fields.wants_call = typeof parsedFields.wants_call === "boolean" ? parsedFields.wants_call : null;
 
   return fields;
+}
+
+function sanitizeNextQuestion(value) {
+  return NEXT_QUESTIONS.includes(value) ? value : null;
 }
 
 function parsePakBudget(message) {
@@ -221,11 +244,17 @@ export async function extractFields(userMessage, context = {}) {
     return {
       intent: "uncertain",
       fields: applyPakMarketFallbacks(userMessage, sanitizeFields()),
+      next_question: null,
+      next_question_prompt: null,
     };
   }
+
+  const nextQuestionPrompt = sanitizeString(parsed.next_question_prompt);
 
   return {
     intent: INTENTS.includes(parsed.intent) ? parsed.intent : "uncertain",
     fields: applyPakMarketFallbacks(userMessage, sanitizeFields(parsed.fields ?? parsed)),
+    next_question: sanitizeNextQuestion(parsed.next_question),
+    next_question_prompt: nextQuestionPrompt,
   };
 }

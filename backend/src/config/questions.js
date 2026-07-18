@@ -145,6 +145,17 @@ export function getQuestionPrompt(language, question) {
   return getCopy(language).prompts[question.promptKey];
 }
 
+export function getQuestionByKey(key) {
+  return QUESTION_ORDER.find((question) => question.key === key) ?? null;
+}
+
+export function getPrompt(key, language) {
+  if (key === "confirm_close") return getCopy(language).confirmClose;
+
+  const question = getQuestionByKey(key);
+  return question ? getQuestionPrompt(language, question) : null;
+}
+
 export function getAcceptedFields(question) {
   return question?.accepts ?? (question ? [question.key] : []);
 }
