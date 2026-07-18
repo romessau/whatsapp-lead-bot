@@ -143,6 +143,39 @@ export async function saveLead(lead) {
   }
 }
 
+export async function getInboundReply(messageSid) {
+  if (!messageSid) return null;
+  const client = requireSupabase("getInboundReply");
+
+  try {
+    const { data, error } = await client
+      .from("processed_messages")
+      .select("reply")
+      .eq("message_sid", messageSid)
+      .maybeSingle();
+    if (error) throw error;
+    return data?.reply ?? null;
+  } catch (err) {
+    logDbError("getInboundReply", err, { messageSid });
+    throw err;
+  }
+}
+
+export async function saveInboundReply(messageSid, reply) {
+  if (!messageSid) return;
+  const client = requireSupabase("saveInboundReply");
+
+  try {
+    const { error } = await client
+      .from("processed_messages")
+      .upsert({ message_sid: messageSid, reply }, { onConflict: "message_sid" });
+    if (error) throw error;
+  } catch (err) {
+    logDbError("saveInboundReply", err, { messageSid });
+    throw err;
+  }
+}
+
 export async function getActiveListings() {
   const client = requireSupabase("getActiveListings");
 

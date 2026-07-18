@@ -22,7 +22,8 @@ listing search, and handoff decisions are all plain code.
    fixed field order and localized copy. `stateMachine.js` asks the next
    missing, non-skipped field.
 3. **Context-aware extraction wrapper** - `extraction.js` asks `OPENAI_MODEL`
-   (default `gpt-4o-mini`) for JSON containing `intent` plus extracted fields.
+   (default `gpt-5.6-luna`) for schema-validated JSON containing `intent` plus
+   only fields explicitly mentioned in the current message.
    The call includes the current question, accepted fields, collected fields,
    skipped fields, and Pakistani market vocabulary. A small deterministic
    fallback captures common phrases such as `50 lac`, `10 marla`, `1 kanal`,
@@ -43,14 +44,18 @@ listing search, and handoff decisions are all plain code.
    urgent/this-month timeline +20, buy/invest purpose +10,
    name+phone +10, wants-call true +10, capped at 100.
 8. **Handoff** - completed Warm/Hot leads are sent to n8n or Resend if
-   configured. Otherwise the summary is logged for demo visibility.
+   configured. n8n must explicitly return `notified: true`; otherwise the
+   backend falls through to Resend or console instead of silently losing a
+   lead. If no channel is configured, the summary is logged for demo visibility.
 9. **Structured listing search** - `/api/search` accepts either natural
    language or structured fields, normalizes market phrasing, and searches
    active Supabase listings. If no DB listings exist, it falls back to demo
    inventory so the product path still works.
 10. **Two front doors, one brain** - web chat (`/api/chat/*`) and Twilio
    WhatsApp Sandbox (`/webhook/whatsapp`) both call `handleIncomingMessage()`.
-   The adapters only validate/translate transport payloads.
+   The adapters only validate/translate transport payloads. Twilio signatures
+   are verified and `MessageSid` replies are stored to make webhook retries
+   idempotent.
 
 ## Requirements
 
@@ -68,7 +73,9 @@ Run this in your Supabase SQL editor:
 -- see backend/src/schema.sql
 ```
 
-The schema creates `leads`, `chat_sessions`, and `listings`. The
+The schema creates `leads`, `chat_sessions`, `listings`, and
+`processed_messages`. All are backend-only: RLS is enabled, browser roles are
+revoked, and the service role has the required access. The
 `leads.status` column is `completed`, `abandoned`, or `deferred`, so incomplete
 leads are not encoded inside `classification`. `leads.session_key` points at
 the chat session and is unique, which makes final lead saves idempotent if a
@@ -104,7 +111,7 @@ curl -X POST http://localhost:4000/api/search \
 | Variable | Required | Purpose |
 |---|---|---|
 | `OPENAI_API_KEY` | yes | Extraction + intent classification |
-| `OPENAI_MODEL` | no | Defaults to `gpt-4o-mini` |
+| `OPENAI_MODEL` | no | Defaults to `gpt-5.6-luna` |
 | `SUPABASE_URL` | yes | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | yes | Server-side Supabase access |
 | `PORT` | no | Defaults to 4000 |
@@ -112,7 +119,9 @@ curl -X POST http://localhost:4000/api/search \
 | `BOOKING_URL` | no | Booking link shown in close/handoff copy |
 | `MAX_CONFIRMATION_HOLDS` | no | Defaults to 2 |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | only for sandbox | Twilio WhatsApp Sandbox credentials |
+| `TWILIO_VALIDATE_SIGNATURE` / `PUBLIC_WEBHOOK_URL` | production WhatsApp | Verify requests against the exact public webhook URL |
 | `N8N_WEBHOOK_URL` | no | If set, completed Warm/Hot handoffs POST here |
+| `N8N_WEBHOOK_SECRET` | recommended with n8n | Shared secret sent in `X-Webhook-Secret` |
 | `RESEND_API_KEY` / `AGENT_EMAIL` / `FROM_EMAIL` | no | Email fallback when no n8n URL is set |
 
 ## 3. Frontend Setup
@@ -131,7 +140,27 @@ Try:
 
 > Mera budget 2 crore hai DHA phase 6 mein 3 bed chahiye
 
-## 4. Twilio WhatsApp Sandbox
+## 4. Docker
+
+After creating `backend/.env`, build and start the app while using the existing
+n8n instance on the host:
+
+```bash
+docker compose up --build backend frontend
+```
+
+The bundled n8n service is opt-in so it does not collide with an existing n8n
+container on port 5678:
+
+```bash
+docker compose --profile local-n8n up --build
+```
+
+The importable workflow is `n8n/workflows/lead-handoff.json`. It uses this
+project's existing workflow ID; update that workflow instead of importing a
+second active webhook with the same path.
+
+## 5. Twilio WhatsApp Sandbox
 
 1. Create a Twilio account and join the WhatsApp Sandbox.
 2. Expose the backend, for example `ngrok http 4000`.

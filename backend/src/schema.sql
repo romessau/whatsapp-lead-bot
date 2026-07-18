@@ -55,9 +55,33 @@ create table if not exists listings (
   created_at timestamp default now()
 );
 
+create table if not exists processed_messages (
+  message_sid text primary key,
+  reply text not null,
+  created_at timestamp with time zone not null default now()
+);
+
 create index if not exists idx_chat_sessions_phone on chat_sessions (phone);
 create index if not exists idx_leads_phone on leads (phone);
 create unique index if not exists idx_leads_session_key on leads (session_key);
 create index if not exists idx_listings_active on listings (active);
 create index if not exists idx_listings_location on listings (location);
 create index if not exists idx_listings_search_filters on listings (purpose, property_type, budget_pkr);
+create index if not exists idx_processed_messages_created_at on processed_messages (created_at);
+
+-- The service-role key stays on the backend. Browser-facing roles cannot read
+-- or mutate lead, session, listing, or webhook idempotency data.
+alter table leads enable row level security;
+alter table chat_sessions enable row level security;
+alter table listings enable row level security;
+alter table processed_messages enable row level security;
+
+revoke all on table leads from public, anon, authenticated;
+revoke all on table chat_sessions from public, anon, authenticated;
+revoke all on table listings from public, anon, authenticated;
+revoke all on table processed_messages from public, anon, authenticated;
+
+grant select, insert, update, delete on table leads to service_role;
+grant select, insert, update, delete on table chat_sessions to service_role;
+grant select, insert, update, delete on table listings to service_role;
+grant select, insert, update, delete on table processed_messages to service_role;

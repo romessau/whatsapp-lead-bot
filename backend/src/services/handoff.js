@@ -46,13 +46,23 @@ export async function notifyAgent(summary, lead) {
     try {
       const response = await fetch(process.env.N8N_WEBHOOK_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(process.env.N8N_WEBHOOK_SECRET
+            ? { "X-Webhook-Secret": process.env.N8N_WEBHOOK_SECRET }
+            : {}),
+        },
         body: JSON.stringify({ summary, lead }),
+        signal: AbortSignal.timeout(8_000),
       });
       if (!response.ok) {
         throw new Error(
           `n8n webhook returned ${response.status} ${response.statusText}: ${await responseSnippet(response)}`
         );
+      }
+      const result = await response.json().catch(() => null);
+      if (result?.notified !== true) {
+        throw new Error("n8n accepted the lead but did not confirm delivery to an agent");
       }
       return;
     } catch (err) {
@@ -77,6 +87,7 @@ export async function notifyAgent(summary, lead) {
           subject: `New ${lead.classification} lead — ${lead.location ?? ""}`,
           text: summary,
         }),
+        signal: AbortSignal.timeout(8_000),
       });
       if (!response.ok) {
         throw new Error(

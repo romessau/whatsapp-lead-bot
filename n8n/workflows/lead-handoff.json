@@ -1,0 +1,82 @@
+{
+  "id": "KiWdz5qXUai7iD2a",
+  "name": "Real Estate Lead Handoff",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-handoff",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "c8f4a47a-0283-47e6-b29f-3d5312901490",
+      "name": "Receive Lead",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "1473bc1b-94dd-423c-963e-b2f6c88682ac"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "32f82a6c-acde-482d-a128-f33816ac5f1a",
+              "name": "accepted",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "c6d7ca28-5b4e-4ac1-b63b-8e236163c5ab",
+              "name": "notified",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "b5b06ae2-a992-4658-b510-a38cbf895ae4",
+              "name": "lead",
+              "value": "={{ $json.body.lead }}",
+              "type": "object"
+            },
+            {
+              "id": "b999a11b-b8a6-4ef5-93ce-a628689d9b19",
+              "name": "summary",
+              "value": "={{ $json.body.summary }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4f98b244-231c-4298-912d-f9c836be6178",
+      "name": "Prepare Handoff",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { accepted: $json.accepted, notified: $json.notified } }}",
+        "options": {}
+      },
+      "id": "131471a0-15c5-4744-9de4-0419b0cf8e14",
+      "name": "Acknowledge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [480, 0]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Receive Lead": {
+      "main": [[{ "node": "Prepare Handoff", "type": "main", "index": 0 }]]
+    },
+    "Prepare Handoff": {
+      "main": [[{ "node": "Acknowledge", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "3f3b8ce8-6db8-42d3-bac4-dd5ee3ce6108"
+}

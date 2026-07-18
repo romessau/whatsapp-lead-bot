@@ -1,0 +1,8 @@
+.git
+.DS_Store
+**/.env
+**/.env.local
+**/node_modules
+**/.next
+n8n_data
+*.log

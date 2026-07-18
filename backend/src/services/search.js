@@ -187,21 +187,42 @@ function withinBudget(listingBudget, targetBudget) {
   return listingBudget <= targetBudget * 1.1;
 }
 
+function matchesLocation(listingLocation, requestedLocation) {
+  if (!requestedLocation) return true;
+  const listing = normalize(listingLocation);
+  const requested = normalize(requestedLocation);
+  if (!listing || !requested) return false;
+  if (listing === requested || listing.includes(requested) || requested.includes(listing)) return true;
+
+  const listingTokens = significantTokens(listing);
+  const requestedTokens = significantTokens(requested);
+  const shared = requestedTokens.filter((token) => listingTokens.includes(token));
+  return shared.length / Math.max(requestedTokens.length, 1) >= 0.6;
+}
+
 export function searchListings(fields, listings = DEMO_LISTINGS, limit = 3) {
   const resolvedLocation = fields.location ? resolveMarketLocation(fields.location, listings) : null;
   const location = resolvedLocation?.location ?? fields.location;
 
   return listings
+    .filter((listing) => !fields.purpose || listing.purpose === fields.purpose)
+    .filter((listing) => !fields.property_type || listing.property_type === fields.property_type)
+    .filter((listing) => matchesLocation(listing.location, location))
+    .filter((listing) => withinBudget(listing.budget_pkr, fields.budget_pkr))
+    .filter(
+      (listing) =>
+        !fields.bedrooms || !listing.bedrooms || Number(listing.bedrooms) === Number(fields.bedrooms)
+    )
     .map((listing) => {
       let score = 0;
       if (fields.purpose && listing.purpose === fields.purpose) score += 25;
       if (fields.property_type && listing.property_type === fields.property_type) score += 25;
-      if (location && normalize(listing.location).includes(normalize(location).split(" ")[0])) score += 25;
+      if (location && matchesLocation(listing.location, location)) score += 25;
       if (withinBudget(listing.budget_pkr, fields.budget_pkr)) score += 15;
       if (fields.bedrooms && listing.bedrooms === fields.bedrooms) score += 10;
       return { ...listing, match_score: score };
     })
-    .filter((listing) => listing.match_score > 0)
+    .filter((listing) => listing.match_score > 0 || !Object.values(fields).some(Boolean))
     .sort((a, b) => b.match_score - a.match_score)
     .slice(0, limit);
 }
