@@ -210,16 +210,18 @@ export async function searchListingsForLead(fields, { limit = 3, useDemoFallback
   let listings = DEMO_LISTINGS;
   let source = "demo";
 
-  try {
-    const { getActiveListings } = await import("../db.js");
-    const dbListings = await getActiveListings();
-    if (dbListings.length > 0) {
-      listings = dbListings;
-      source = "supabase";
+  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const { getActiveListings } = await import("../db.js");
+      const dbListings = await getActiveListings();
+      if (dbListings.length > 0) {
+        listings = dbListings;
+        source = "supabase";
+      }
+    } catch (err) {
+      if (!useDemoFallback) throw err;
+      console.warn("[search] Falling back to demo listings", { message: err.message });
     }
-  } catch (err) {
-    if (!useDemoFallback) throw err;
-    console.warn("[search] Falling back to demo listings", { message: err.message });
   }
 
   return {

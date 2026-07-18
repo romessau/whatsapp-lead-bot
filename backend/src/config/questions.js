@@ -37,14 +37,14 @@ export const EMPTY_FIELDS = FIELD_KEYS.reduce((acc, key) => {
 export const COPY = {
   en: {
     languagePrompt:
-      "Assalam-o-Alaikum! Please choose your preferred language:\n1. English\n2. Urdu / Roman Urdu",
+      'Assalam-o-Alaikum! Tell me what you are looking for. You can write in English, Urdu, or Roman Urdu.\n\nExample: "rent commercial in JT under 5 lac"',
     invalidLanguage:
-      "Please reply with 1 for English or 2 for Urdu / Roman Urdu so I can continue.",
-    reassure: "No worries. I just need this detail to match you with the right property.",
+      "I didn't catch a property detail yet. Tell me the area, budget, property type, or whether you want to buy/rent/invest.",
+    reassure: "No worries. Tell me any detail you know: area, budget, property type, size, or timeline.",
     redirect:
-      "I can help with property requirements, budgets, locations, and agent follow-up. Let's continue.",
-    acknowledge: "Got it.",
-    partialAcknowledge: "Got it, I noted the useful details.",
+      "I can help search property options and qualify your requirement. Share an area, budget, property type, or timeline.",
+    acknowledge: "Noted.",
+    partialAcknowledge: "Noted, I picked up the useful details.",
     exitMessage:
       "No problem. I have marked this conversation as closed for now. You can message again anytime.",
     alreadyCompleted:
@@ -69,12 +69,11 @@ export const COPY = {
     },
     prompts: {
       purpose: "Are you looking to buy, rent, or invest?",
-      location:
-        "Great. Which area are you interested in? (for example DHA, Bahria Town, Gulberg, Askari, Johar Town)",
-      budget_pkr: 'What is your budget range, roughly? (in PKR, for example "1.5 crore" or "50 lakh")',
-      property_type: "What type of property? Plot, house, apartment, or commercial?",
-      bedrooms: "How many bedrooms, or what size, are you looking for?",
-      timeline: "What is your timeline: urgent, this month, within 3 months, or just exploring?",
+      location: "Which area should I search in? You can use short forms too, like JT, DHA Phase 6, Bahria, Gulberg.",
+      budget_pkr: 'What budget should I filter around? For example: "5 lac", "50 lakh", or "1.5 crore".',
+      property_type: "What type should I search for: plot, house, apartment, or commercial?",
+      bedrooms: "Any size or bedroom requirement? For example: 10 marla, 1 kanal, 2 bed, or 1200 sq ft.",
+      timeline: "How soon do you need it: urgent, this month, within 3 months, or just exploring?",
       name: "Could I get your name, please?",
       phone: "And the best phone number to reach you on?",
       wants_call: "Would you like one of our agents to give you a call? (yes/no)",
@@ -82,14 +81,14 @@ export const COPY = {
   },
   ur: {
     languagePrompt:
-      "Assalam-o-Alaikum! Apni preferred language choose karein:\n1. English\n2. Urdu / Roman Urdu",
+      'Assalam-o-Alaikum! Apni requirement bata dein. English, Urdu, ya Roman Urdu sab theek hai.\n\nExample: "JT mein commercial rent 5 lac tak"',
     invalidLanguage:
-      "Barah-e-karam English ke liye 1 ya Urdu / Roman Urdu ke liye 2 reply karein.",
-    reassure: "Koi masla nahi. Sahi property match karne ke liye yeh detail chahiye.",
+      "Property detail samajh nahi aayi. Area, budget, property type, ya buy/rent/invest mein se kuch bata dein.",
+    reassure: "Koi masla nahi. Jo detail pata ho bata dein: area, budget, type, size, ya timeline.",
     redirect:
-      "Main property requirement, budget, location, aur agent follow-up mein madad kar sakta hun. Chaliye continue karte hain.",
-    acknowledge: "Samajh gaya.",
-    partialAcknowledge: "Samajh gaya, useful details note kar li hain.",
+      "Main property options search aur requirement qualify karne mein help kar sakta hun. Area, budget, type, ya timeline bata dein.",
+    acknowledge: "Noted.",
+    partialAcknowledge: "Noted, useful details pick kar li hain.",
     exitMessage:
       "Theek hai. Maine is conversation ko abhi ke liye closed mark kar diya hai. Aap kabhi bhi dobara message kar sakte hain.",
     alreadyCompleted:
@@ -115,11 +114,11 @@ export const COPY = {
     prompts: {
       purpose: "Aap buy, rent, ya invest karna chahte hain?",
       location:
-        "Great. Aap kis area mein interested hain? (for example DHA, Bahria Town, Gulberg, Askari, Johar Town)",
-      budget_pkr: 'Aapka budget roughly kitna hai? (PKR mein, for example "1.5 crore" ya "50 lakh")',
-      property_type: "Property type kya chahiye? Plot, house, apartment, ya commercial?",
-      bedrooms: "Kitne bedrooms, ya kis size ki property chahiye?",
-      timeline: "Timeline kya hai: urgent, this month, within 3 months, ya just exploring?",
+        "Kis area mein search karun? Short form bhi chalegi, jaise JT, DHA Phase 6, Bahria, Gulberg.",
+      budget_pkr: 'Budget kis range mein filter karun? Example: "5 lac", "50 lakh", ya "1.5 crore".',
+      property_type: "Kis type ki property search karun: plot, house, apartment, ya commercial?",
+      bedrooms: "Size ya bedrooms ki requirement? Example: 10 marla, 1 kanal, 2 bed, ya 1200 sq ft.",
+      timeline: "Kab tak chahiye: urgent, this month, within 3 months, ya just exploring?",
       name: "Aapka naam mil sakta hai?",
       phone: "Aur best phone number jahan aapse rabta ho sake?",
       wants_call: "Kya aap chahte hain hamara agent aapko call kare? (yes/no)",
