@@ -1,8 +1,9 @@
-# WhatsApp-Style Real Estate Lead-Qualification Bot (Demo)
+# Pakistan Property Assistant
 
-Portfolio product demo for Pakistani real estate agencies: a WhatsApp-style
-lead-qualification bot with structured listing search, deterministic scoring,
-Supabase persistence, and optional agent handoff.
+Lahore-first, Pakistan-ready AI sales assistant for real estate agencies. It
+combines a bilingual property conversation, structured listing search,
+deterministic scoring, Supabase persistence, secure agent access, and lead
+handoff through WhatsApp and email.
 
 OpenAI is used only for one structured extraction + intent classification call
 per normal user turn. Routing, skipping, confirmation, scoring, persistence,
@@ -10,7 +11,7 @@ listing search, and handoff decisions are all plain code.
 
 ```
 /backend   Express API: webhook, state machine, extraction, scoring, search, Supabase
-/frontend  Next.js + Tailwind chat UI that mirrors the WhatsApp conversation
+/frontend  Next.js + Tailwind customer chat and authenticated agent dashboard
 ```
 
 ## Current Flow
@@ -22,7 +23,8 @@ listing search, and handoff decisions are all plain code.
    fixed field order and localized copy. `stateMachine.js` asks the next
    missing, non-skipped field.
 3. **Context-aware extraction wrapper** - `extraction.js` asks `OPENAI_MODEL`
-   (default `gpt-4o-mini`) for JSON containing `intent` plus extracted fields.
+   (default `gpt-5.6-luna`) for schema-validated JSON containing `intent` plus
+   only fields explicitly mentioned in the current message.
    The call includes the current question, accepted fields, collected fields,
    skipped fields, and Pakistani market vocabulary. A small deterministic
    fallback captures common phrases such as `50 lac`, `10 marla`, `1 kanal`,
@@ -42,15 +44,25 @@ listing search, and handoff decisions are all plain code.
    budget provided +15, budget realistic +20, location +15,
    urgent/this-month timeline +20, buy/invest purpose +10,
    name+phone +10, wants-call true +10, capped at 100.
-8. **Handoff** - completed Warm/Hot leads are sent to n8n or Resend if
-   configured. Otherwise the summary is logged for demo visibility.
+8. **Handoff** - completed Warm/Hot leads are sent to every configured direct
+   notification channel: the agent's WhatsApp number and email. n8n remains an
+   optional automation path and must explicitly return `notified: true`; it
+   cannot suppress direct notifications merely by accepting the webhook. If no
+   channel succeeds, the summary is logged for demo visibility.
 9. **Structured listing search** - `/api/search` accepts either natural
    language or structured fields, normalizes market phrasing, and searches
    active Supabase listings. If no DB listings exist, it falls back to demo
    inventory so the product path still works.
 10. **Two front doors, one brain** - web chat (`/api/chat/*`) and Twilio
    WhatsApp Sandbox (`/webhook/whatsapp`) both call `handleIncomingMessage()`.
-   The adapters only validate/translate transport payloads.
+   The adapters only validate/translate transport payloads. Twilio signatures
+   are verified and `MessageSid` replies are stored to make webhook retries
+   idempotent.
+11. **Secure lead desk** - `/admin` uses Supabase password-free email sign-in.
+    The backend verifies the access token and checks the email against
+    `ADMIN_EMAILS` (or `AGENT_EMAIL`) before returning lead data. Agents can
+    search leads, move them through `new`, `contacted`, `viewing`, `won`, and
+    `lost`, and save private follow-up notes.
 
 ## Requirements
 
@@ -68,11 +80,15 @@ Run this in your Supabase SQL editor:
 -- see backend/src/schema.sql
 ```
 
-The schema creates `leads`, `chat_sessions`, and `listings`. The
+The schema creates `leads`, `chat_sessions`, `listings`, and
+`processed_messages`. All are backend-only: RLS is enabled, browser roles are
+revoked, and the service role has the required access. The
 `leads.status` column is `completed`, `abandoned`, or `deferred`, so incomplete
 leads are not encoded inside `classification`. `leads.session_key` points at
 the chat session and is unique, which makes final lead saves idempotent if a
 confirmation is submitted twice.
+`leads.pipeline_status`, `leads.agent_notes`, and `leads.updated_at` power the
+agent lead desk without mixing sales follow-up state into lead qualification.
 
 ## 2. Backend Setup
 
@@ -104,34 +120,66 @@ curl -X POST http://localhost:4000/api/search \
 | Variable | Required | Purpose |
 |---|---|---|
 | `OPENAI_API_KEY` | yes | Extraction + intent classification |
-| `OPENAI_MODEL` | no | Defaults to `gpt-4o-mini` |
+| `OPENAI_MODEL` | no | Defaults to `gpt-5.6-luna` |
 | `SUPABASE_URL` | yes | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | yes | Server-side Supabase access |
+| `ADMIN_EMAILS` | dashboard | Comma-separated Supabase Auth emails allowed into the lead desk; falls back to `AGENT_EMAIL` |
 | `PORT` | no | Defaults to 4000 |
 | `CORS_ORIGIN` | no | Comma-separated allowed frontend origins |
 | `BOOKING_URL` | no | Booking link shown in close/handoff copy |
 | `MAX_CONFIRMATION_HOLDS` | no | Defaults to 2 |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | only for sandbox | Twilio WhatsApp Sandbox credentials |
+| `AGENT_WHATSAPP_TO` | no | Agent notification recipient in `whatsapp:+E.164` format |
+| `TWILIO_AGENT_CONTENT_SID` | production notifications | Approved template used outside WhatsApp's free-form service window |
+| `TWILIO_VALIDATE_SIGNATURE` / `PUBLIC_WEBHOOK_URL` | production WhatsApp | Verify requests against the exact public webhook URL |
 | `N8N_WEBHOOK_URL` | no | If set, completed Warm/Hot handoffs POST here |
-| `RESEND_API_KEY` / `AGENT_EMAIL` / `FROM_EMAIL` | no | Email fallback when no n8n URL is set |
+| `N8N_WEBHOOK_SECRET` | recommended with n8n | Shared secret sent in `X-Webhook-Secret` |
+| `RESEND_API_KEY` / `AGENT_EMAIL` / `FROM_EMAIL` | no | Direct email notification channel |
 
 ## 3. Frontend Setup
 
 ```bash
 cd frontend
 cp .env.local.example .env.local
+# set NEXT_PUBLIC_API_BASE plus the Supabase URL and publishable key
 npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. The UI starts with language selection and shows
-a clear error if the backend is unreachable.
+Open `http://localhost:3000` for the customer assistant and
+`http://localhost:3000/admin` for the agent lead desk. The publishable key is
+safe for browser use; never place the service-role key in frontend variables.
 
 Try:
 
 > Mera budget 2 crore hai DHA phase 6 mein 3 bed chahiye
 
-## 4. Twilio WhatsApp Sandbox
+## 4. Docker
+
+After creating `backend/.env`, build and start the app while using the existing
+n8n instance on the host:
+
+```bash
+docker compose up --build backend frontend
+```
+
+For the authenticated dashboard in Docker, export
+`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` before
+building. These are public browser configuration values; the service-role key
+still belongs only in `backend/.env`.
+
+The bundled n8n service is opt-in so it does not collide with an existing n8n
+container on port 5678:
+
+```bash
+docker compose --profile local-n8n up --build
+```
+
+The importable workflow is `n8n/workflows/lead-handoff.json`. It uses this
+project's existing workflow ID; update that workflow instead of importing a
+second active webhook with the same path.
+
+## 5. Twilio WhatsApp Sandbox
 
 1. Create a Twilio account and join the WhatsApp Sandbox.
 2. Expose the backend, for example `ngrok http 4000`.
@@ -176,4 +224,4 @@ Leads already saved to `leads` remain untouched.
 - No production vector database yet; current search uses structured demo inventory
 - No payments
 - No multi-agent or multi-tenant support
-- No authentication for the demo UI
+- No multi-agency role model yet; dashboard access is a single-agency email allowlist

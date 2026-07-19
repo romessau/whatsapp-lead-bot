@@ -7,6 +7,8 @@ import {
   findNextQuestion,
   getAcceptedFields,
   getCopy,
+  getQuestionByKey,
+  getPrompt,
   getQuestionPrompt,
 } from "../config/questions.js";
 import { MAX_CONFIRMATION_HOLDS } from "../config/app.js";
@@ -14,13 +16,12 @@ import { getOrCreateSession, saveLead, saveSession } from "../db.js";
 import { extractFields } from "./extraction.js";
 import { buildHandoffSummary, notifyAgent } from "./handoff.js";
 import { scoreLead } from "./scoring.js";
-import { searchListings } from "./search.js";
+import { searchListingsForLead } from "./search.js";
 
 const SKIP_RE = /\b(skip|not sure|idk|i don't know|dont know|no idea|pata nahi|maloom nahi)\b/i;
 const CONFIRM_RE = /\b(yes|yep|yeah|sure|ok|okay|confirm|save|send|done|han|haan|theek|kar dein)\b/i;
 const HOLD_RE = /\b(no|not yet|later|hold|wait|maybe later|abhi nahi|ruk|nahi)\b/i;
 const EARLY_EXIT_RE = /\b(bye|goodbye|not interested|stop|cancel|no thanks|unsubscribe|bas|band)\b/i;
-
 function hasValue(value) {
   if (typeof value === "string") return value.trim().length > 0;
   return value !== null && value !== undefined;
@@ -61,6 +62,7 @@ function normalizeState(rawState = {}) {
     completed: rawState.completed === true,
     status: rawState.status ?? null,
     lead_id: rawState.lead_id ?? null,
+    last_search_signature: rawState.last_search_signature ?? null,
   };
 }
 
@@ -75,13 +77,15 @@ function serializeState(state) {
     completed: state.completed,
     status: state.status,
     lead_id: state.lead_id,
+    last_search_signature: state.last_search_signature,
   };
 }
 
-function mergeFields(existing, extracted) {
+export function mergeFields(existing, extracted) {
   const merged = { ...existing };
   for (const key of FIELD_KEYS) {
-    if (!hasValue(merged[key]) && hasValue(extracted[key])) {
+    // Extracted fields were explicitly mentioned, so replacement is a correction.
+    if (hasValue(extracted[key])) {
       merged[key] = extracted[key];
     }
   }
@@ -97,6 +101,18 @@ function detectLanguageChoice(userMessage) {
   if (/^(1|english|eng|en)\b/.test(normalized)) return "en";
   if (/^(2|urdu|roman urdu|ur)\b/.test(normalized)) return "ur";
   return null;
+}
+
+function isOnlyLanguageChoice(userMessage) {
+  return /^(1|2|english|eng|en|urdu|roman urdu|ur)[\s.!?]*$/i.test(userMessage.trim());
+}
+
+function inferLanguage(userMessage) {
+  if (/[\u0600-\u06FF]/.test(userMessage)) return "ur";
+  if (/\b(aap|apni|kya|hai|hain|chahiye|karna|mein|mujhe|mera|meri|kiraya|khareed|kharid|jaldi)\b/i.test(userMessage)) {
+    return "ur";
+  }
+  return DEFAULT_LANGUAGE;
 }
 
 function isSkipReply(userMessage) {
@@ -125,6 +141,27 @@ function nextPrompt(state) {
   };
 }
 
+function questionFromKey(key, language) {
+  if (!key) return null;
+  const prompt = getPrompt(key, language);
+  if (!prompt) return null;
+  const configuredQuestion = getQuestionByKey(key);
+  return {
+    key,
+    acceptedFields: configuredQuestion ? getAcceptedFields(configuredQuestion) : [key],
+    prompt,
+  };
+}
+
+function fallbackNextPrompt(state) {
+  return nextPrompt(state);
+}
+
+function currentStepPrompt(state, currentStep) {
+  if (!currentStep || currentStep === "confirm_close" || currentStep === "language") return fallbackNextPrompt(state);
+  return questionFromKey(currentStep, state.language) ?? fallbackNextPrompt(state);
+}
+
 function buildExtractionContext(state, currentQuestion) {
   return {
     language: state.language,
@@ -145,7 +182,7 @@ function responseWithPrompt(prefix, prompt) {
 }
 
 function changedFieldCount(before, after) {
-  return FIELD_KEYS.filter((key) => !hasValue(before[key]) && hasValue(after[key])).length;
+  return FIELD_KEYS.filter((key) => before[key] !== after[key] && hasValue(after[key])).length;
 }
 
 function acknowledgementFor(language, count) {
@@ -154,21 +191,61 @@ function acknowledgementFor(language, count) {
   return count > 1 ? copy.partialAcknowledge : copy.acknowledge;
 }
 
-function searchHint(fields, language) {
-  const matches = searchListings(fields, undefined, 2);
-  if (matches.length === 0) return "";
-
-  const lines = matches.map((match) => `- ${match.title} (${match.size ?? "size N/A"}, PKR ${Number(match.budget_pkr).toLocaleString("en-PK")})`);
-  if (language === "ur") {
-    return `Search mein kuch relevant options nazar aa rahe hain:\n${lines.join("\n")}`;
-  }
-  return `I can already see a few relevant demo matches:\n${lines.join("\n")}`;
+function formatBudget(pkr) {
+  if (!pkr) return null;
+  return `PKR ${Number(pkr).toLocaleString("en-PK")}`;
 }
 
-async function persistProgress(phone, state) {
-  const question = nextPrompt(state);
-  await saveSession(phone, serializeState(state), question?.key ?? null);
-  return question;
+function compactRequirementSummary(fields, language) {
+  const parts = [];
+  if (fields.purpose) parts.push(fields.purpose);
+  if (fields.property_type) parts.push(fields.property_type);
+  if (fields.location) parts.push(fields.location);
+  if (fields.budget_pkr) parts.push(formatBudget(fields.budget_pkr));
+  if (fields.size) parts.push(fields.size);
+  else if (fields.bedrooms) parts.push(`${fields.bedrooms} bed`);
+
+  if (parts.length === 0) return "";
+  return language === "ur" ? `Requirement: ${parts.join(" / ")}` : `Requirement: ${parts.join(" / ")}`;
+}
+
+function searchSignature(fields) {
+  if (!fields.location || !(fields.purpose || fields.property_type || fields.budget_pkr)) return null;
+  return JSON.stringify({
+    purpose: fields.purpose ?? null,
+    location: fields.location ?? null,
+    budget_pkr: fields.budget_pkr ?? null,
+    property_type: fields.property_type ?? null,
+    bedrooms: fields.bedrooms ?? null,
+    size: fields.size ?? null,
+  });
+}
+
+async function searchHint(state) {
+  const signature = searchSignature(state.fields);
+  if (!signature || state.last_search_signature === signature) return "";
+
+  const { matches, source } = await searchListingsForLead(state.fields, { limit: 2 });
+  if (matches.length === 0) return "";
+  state.last_search_signature = signature;
+
+  const lines = matches.map(
+    (match) => `- ${match.title} (${match.size ?? "size N/A"}, ${formatBudget(match.budget_pkr) ?? "budget N/A"})`
+  );
+  if (state.language === "ur") {
+    return `Search mein ${source === "demo" ? "demo " : ""}matches mil rahe hain:\n${lines.join("\n")}`;
+  }
+  return `I found ${source === "demo" ? "demo " : ""}matches:\n${lines.join("\n")}`;
+}
+
+function buildReply({ language, ack = "", summary = "", hint = "", prompt = "" }) {
+  return [ack, summary, hint, prompt].filter(Boolean).join("\n\n");
+}
+
+async function persistProgress(phone, state, question = null) {
+  const resolvedQuestion = question ?? fallbackNextPrompt(state);
+  await saveSession(phone, serializeState(state), resolvedQuestion?.key ?? null);
+  return resolvedQuestion;
 }
 
 async function finalizeLead(phone, state, status, sessionId) {
@@ -220,15 +297,20 @@ async function askForConfirmation(phone, state) {
 /**
  * Core, channel-agnostic conversation step. Both the web chat adapter and
  * the Twilio WhatsApp adapter call this with the same inputs and get the
- * same outputs. The LLM extracts fields and intent only; code owns routing.
+ * same outputs. The LLM extracts explicitly mentioned fields and intent;
+ * deterministic code owns question order, scoring, persistence, and handoff.
  *
  * @param {string} phone - stable id for the session (phone number or web session id)
  * @param {string} userMessage - raw inbound text
+ * @param {{channel?: string, contactPhone?: string}} options - channel metadata
  * @returns {Promise<{reply: string, done: boolean, lead?: object}>}
  */
-export async function handleIncomingMessage(phone, userMessage) {
+export async function handleIncomingMessage(phone, userMessage, options = {}) {
   const session = await getOrCreateSession(phone);
   const state = normalizeState(session.state);
+  if (!hasValue(state.fields.phone) && hasValue(options.contactPhone)) {
+    state.fields.phone = options.contactPhone;
+  }
   const copy = getCopy(state.language);
 
   if (state.completed) {
@@ -247,23 +329,16 @@ export async function handleIncomingMessage(phone, userMessage) {
     }
 
     const language = detectLanguageChoice(userMessage);
-    if (!language) {
-      state.awaiting_language = true;
-      await saveSession(phone, serializeState(state), "language");
-      const languageCopy = getCopy(DEFAULT_LANGUAGE);
-      return {
-        reply: responseWithPrompt(languageCopy.invalidLanguage, languageCopy.languagePrompt),
-        done: false,
-      };
-    }
-
-    state.language = language;
+    state.language = language ?? inferLanguage(userMessage);
     state.awaiting_language = false;
-    const question = await persistProgress(phone, state);
-    return { reply: question.prompt, done: false };
+
+    if (language && isOnlyLanguageChoice(userMessage)) {
+      const question = await persistProgress(phone, state);
+      return { reply: question.prompt, done: false };
+    }
   }
 
-  const currentQuestion = nextPrompt(state);
+  const currentQuestion = currentStepPrompt(state, session.current_step);
   const extraction = await extractFields(userMessage, buildExtractionContext(state, currentQuestion));
   const usefulFieldFound = hasAnyUsefulField(extraction.fields);
 
@@ -307,7 +382,12 @@ export async function handleIncomingMessage(phone, userMessage) {
 
     await saveSession(phone, serializeState(state), "confirm_close");
     const reply = usefulFieldFound
-      ? responseWithPrompt(ack, getCopy(state.language).confirmClose)
+      ? buildReply({
+          language: state.language,
+          ack,
+          summary: compactRequirementSummary(state.fields, state.language),
+          prompt: getCopy(state.language).confirmClose,
+        })
       : responseWithPrompt(getCopy(state.language).redirect, getCopy(state.language).confirmClose);
     return { reply, done: false };
   }
@@ -329,10 +409,21 @@ export async function handleIncomingMessage(phone, userMessage) {
   }
 
   if (allFieldsResolved(state.fields, state.skipped)) {
+    const hint = await searchHint(state);
     const result = await askForConfirmation(phone, state);
-    return { ...result, reply: responseWithPrompt(ack, result.reply) };
+    return {
+      ...result,
+      reply: buildReply({
+        language: state.language,
+        ack,
+        summary: compactRequirementSummary(state.fields, state.language),
+        hint,
+        prompt: result.reply,
+      }),
+    };
   }
 
+  const hint = changedFieldCount(previousFields, state.fields) > 0 ? await searchHint(state) : "";
   const question = await persistProgress(phone, state);
 
   if (!usefulFieldFound && !skipCurrent) {
@@ -340,9 +431,14 @@ export async function handleIncomingMessage(phone, userMessage) {
     return { reply: responseWithPrompt(prefix, question.prompt), done: false };
   }
 
-  const hint = changedFieldCount(previousFields, state.fields) > 0 ? searchHint(state.fields, state.language) : "";
   return {
-    reply: responseWithPrompt(responseWithPrompt(ack, hint), question.prompt),
+    reply: buildReply({
+      language: state.language,
+      ack,
+      summary: compactRequirementSummary(state.fields, state.language),
+      hint,
+      prompt: question.prompt,
+    }),
     done: false,
   };
 }

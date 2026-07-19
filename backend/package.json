@@ -10,6 +10,7 @@
     "seed:reset": "node scripts/seed.js",
     "seed:listings": "node scripts/seed-listings.js",
     "smoke:search": "node scripts/smoke-search.js",
+    "test": "node --test",
     "check": "node --check src/server.js && node --check src/services/stateMachine.js && node --check src/services/extraction.js && node --check src/services/search.js && node scripts/smoke-search.js"
   },
   "dependencies": {
@@ -17,7 +18,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "openai": "^4.63.0",
-    "twilio": "^5.3.3"
+    "openai": "^6.48.0",
+    "twilio": "^5.3.3",
+    "zod": "^3.25.76"
   }
 }

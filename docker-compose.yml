@@ -1,0 +1,50 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      PORT: 4000
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL_DOCKER:-http://host.docker.internal:5678/webhook/lead-handoff}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE: http://localhost:4000
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  n8n:
+    image: n8nio/n8n:2.29.10
+    profiles: ["local-n8n"]
+    environment:
+      N8N_HOST: localhost
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-replace-this-before-production}
+      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET:-replace-this-before-production}
+      GENERIC_TIMEZONE: Asia/Karachi
+      TZ: Asia/Karachi
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+    restart: unless-stopped
+
+volumes:
+  n8n_data:
