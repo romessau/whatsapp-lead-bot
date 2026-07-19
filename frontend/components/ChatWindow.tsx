@@ -20,7 +20,7 @@ export default function ChatWindow() {
   const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const chatLogRef = useRef<HTMLDivElement>(null);
 
   const restart = async () => {
     const id = newSessionId();
@@ -53,7 +53,8 @@ export default function ChatWindow() {
   }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const chatLog = chatLogRef.current;
+    if (chatLog) chatLog.scrollTo({ top: chatLog.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
   const handleSend = async () => {
@@ -80,11 +81,11 @@ export default function ChatWindow() {
   };
 
   return (
-    <div className="w-full max-w-md h-[640px] bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col">
-      <div className="bg-wa-green text-white px-4 py-3 flex items-center justify-between">
+    <div className="w-full h-[680px] bg-white rounded-[28px] shadow-chat border border-slate-200/80 overflow-hidden flex flex-col">
+      <div className="bg-wa-green text-white px-5 py-4 flex items-center justify-between">
         <div>
-          <div className="font-semibold">Prime Estates Agency</div>
-          <div className="text-xs text-green-100">Lead Qualification Bot • demo</div>
+          <div className="font-semibold">Pakistan Property Assistant</div>
+          <div className="text-xs text-green-100">AI property consultant · Lahore demo</div>
         </div>
         <button
           type="button"
@@ -102,6 +103,7 @@ export default function ChatWindow() {
       )}
 
       <div
+        ref={chatLogRef}
         className="flex-1 overflow-y-auto px-3 py-4 space-y-2 bg-wa-bg"
         role="log"
         aria-live="polite"
@@ -110,7 +112,7 @@ export default function ChatWindow() {
         {messages.map((m) => (
           <div key={m.id} className={`flex ${m.from === "user" ? "justify-end" : "justify-start"}`}>
             <div
-              className={`max-w-[80%] px-3 py-2 rounded-lg text-sm whitespace-pre-wrap shadow ${
+            className={`max-w-[84%] px-3.5 py-2.5 rounded-2xl text-sm leading-6 whitespace-pre-wrap shadow-sm ${
                 m.from === "user" ? "bg-wa-bubble" : "bg-white"
               }`}
             >
@@ -123,11 +125,10 @@ export default function ChatWindow() {
             <div className="bg-white px-3 py-2 rounded-lg text-sm shadow text-gray-400">…</div>
           </div>
         )}
-        <div ref={bottomRef} />
       </div>
 
       <form
-        className="p-3 bg-white border-t flex gap-2"
+        className="p-3.5 bg-white border-t flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           handleSend();

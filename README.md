@@ -1,8 +1,9 @@
-# WhatsApp-Style Real Estate Lead-Qualification Bot (Demo)
+# Pakistan Property Assistant
 
-Portfolio product demo for Pakistani real estate agencies: a WhatsApp-style
-lead-qualification bot with structured listing search, deterministic scoring,
-Supabase persistence, and optional agent handoff.
+Lahore-first, Pakistan-ready AI sales assistant for real estate agencies. It
+combines a bilingual property conversation, structured listing search,
+deterministic scoring, Supabase persistence, secure agent access, and lead
+handoff through WhatsApp and email.
 
 OpenAI is used only for one structured extraction + intent classification call
 per normal user turn. Routing, skipping, confirmation, scoring, persistence,
@@ -10,7 +11,7 @@ listing search, and handoff decisions are all plain code.
 
 ```
 /backend   Express API: webhook, state machine, extraction, scoring, search, Supabase
-/frontend  Next.js + Tailwind chat UI that mirrors the WhatsApp conversation
+/frontend  Next.js + Tailwind customer chat and authenticated agent dashboard
 ```
 
 ## Current Flow
@@ -57,6 +58,11 @@ listing search, and handoff decisions are all plain code.
    The adapters only validate/translate transport payloads. Twilio signatures
    are verified and `MessageSid` replies are stored to make webhook retries
    idempotent.
+11. **Secure lead desk** - `/admin` uses Supabase password-free email sign-in.
+    The backend verifies the access token and checks the email against
+    `ADMIN_EMAILS` (or `AGENT_EMAIL`) before returning lead data. Agents can
+    search leads, move them through `new`, `contacted`, `viewing`, `won`, and
+    `lost`, and save private follow-up notes.
 
 ## Requirements
 
@@ -81,6 +87,8 @@ revoked, and the service role has the required access. The
 leads are not encoded inside `classification`. `leads.session_key` points at
 the chat session and is unique, which makes final lead saves idempotent if a
 confirmation is submitted twice.
+`leads.pipeline_status`, `leads.agent_notes`, and `leads.updated_at` power the
+agent lead desk without mixing sales follow-up state into lead qualification.
 
 ## 2. Backend Setup
 
@@ -115,6 +123,7 @@ curl -X POST http://localhost:4000/api/search \
 | `OPENAI_MODEL` | no | Defaults to `gpt-5.6-luna` |
 | `SUPABASE_URL` | yes | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | yes | Server-side Supabase access |
+| `ADMIN_EMAILS` | dashboard | Comma-separated Supabase Auth emails allowed into the lead desk; falls back to `AGENT_EMAIL` |
 | `PORT` | no | Defaults to 4000 |
 | `CORS_ORIGIN` | no | Comma-separated allowed frontend origins |
 | `BOOKING_URL` | no | Booking link shown in close/handoff copy |
@@ -132,12 +141,14 @@ curl -X POST http://localhost:4000/api/search \
 ```bash
 cd frontend
 cp .env.local.example .env.local
+# set NEXT_PUBLIC_API_BASE plus the Supabase URL and publishable key
 npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. The UI starts with language selection and shows
-a clear error if the backend is unreachable.
+Open `http://localhost:3000` for the customer assistant and
+`http://localhost:3000/admin` for the agent lead desk. The publishable key is
+safe for browser use; never place the service-role key in frontend variables.
 
 Try:
 
@@ -151,6 +162,11 @@ n8n instance on the host:
 ```bash
 docker compose up --build backend frontend
 ```
+
+For the authenticated dashboard in Docker, export
+`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` before
+building. These are public browser configuration values; the service-role key
+still belongs only in `backend/.env`.
 
 The bundled n8n service is opt-in so it does not collide with an existing n8n
 container on port 5678:
@@ -208,4 +224,4 @@ Leads already saved to `leads` remain untouched.
 - No production vector database yet; current search uses structured demo inventory
 - No payments
 - No multi-agent or multi-tenant support
-- No authentication for the demo UI
+- No multi-agency role model yet; dashboard access is a single-agency email allowlist

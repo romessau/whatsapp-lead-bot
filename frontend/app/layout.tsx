@@ -1,14 +1,14 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Real Estate Lead Bot — Demo",
-  description: "WhatsApp-style lead qualification bot demo",
+  title: "Pakistan Property Assistant",
+  description: "AI property search, lead qualification, and agent handoff for Pakistan real estate.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-wa-bg min-h-screen flex items-center justify-center">{children}</body>
+      <body>{children}</body>
     </html>
   );
 }

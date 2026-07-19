@@ -11,6 +11,10 @@ module.exports = {
           bg: "#ECE5DD",
         },
       },
+      boxShadow: {
+        panel: "0 12px 40px rgba(15, 23, 42, 0.05)",
+        chat: "0 30px 90px rgba(15, 23, 42, 0.16)",
+      },
     },
   },
   plugins: [],

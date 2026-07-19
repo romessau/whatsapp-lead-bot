@@ -4,6 +4,7 @@ import cors from "cors";
 import { chatRouter } from "./routes/chat.js";
 import { searchRouter } from "./routes/search.js";
 import { whatsappRouter } from "./routes/whatsapp.js";
+import { adminRouter } from "./routes/admin.js";
 
 const app = express();
 const corsOrigins = process.env.CORS_ORIGIN?.split(",")
@@ -23,6 +24,7 @@ app.get("/health", (req, res) => res.json({ ok: true }));
 
 app.use("/api/chat", chatRouter);
 app.use("/api/search", searchRouter);
+app.use("/api/admin", adminRouter);
 app.use("/webhook/whatsapp", whatsappRouter);
 
 app.use((err, req, res, next) => {

@@ -143,6 +143,42 @@ export async function saveLead(lead) {
   }
 }
 
+export async function listLeads({ limit = 200 } = {}) {
+  const client = requireSupabase("listLeads");
+  const safeLimit = Math.min(Math.max(Number(limit) || 200, 1), 500);
+
+  try {
+    const { data, error } = await client
+      .from("leads")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(safeLimit);
+    if (error) throw error;
+    return data ?? [];
+  } catch (err) {
+    logDbError("listLeads", err, { limit: safeLimit });
+    throw err;
+  }
+}
+
+export async function updateLeadPipeline(id, updates) {
+  const client = requireSupabase("updateLeadPipeline");
+
+  try {
+    const { data, error } = await client
+      .from("leads")
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .select("*")
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    logDbError("updateLeadPipeline", err, { id });
+    throw err;
+  }
+}
+
 export async function getInboundReply(messageSid) {
   if (!messageSid) return null;
   const client = requireSupabase("getInboundReply");

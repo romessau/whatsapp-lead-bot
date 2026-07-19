@@ -30,3 +30,30 @@ export async function sendMessage(sessionId: string, message: string) {
   });
   return parseResponse(res, "Failed to send message");
 }
+
+async function adminRequest(path: string, token: string, init?: RequestInit) {
+  const res = await fetch(`${API_BASE}/api/admin${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...init?.headers,
+    },
+  });
+  return parseResponse(res, "Agent dashboard request failed");
+}
+
+export function getAdminLeads(token: string) {
+  return adminRequest("/leads", token);
+}
+
+export function updateAdminLead(
+  token: string,
+  id: string,
+  updates: { pipeline_status?: string; agent_notes?: string }
+) {
+  return adminRequest(`/leads/${id}`, token, {
+    method: "PATCH",
+    body: JSON.stringify(updates),
+  });
+}
